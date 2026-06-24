@@ -1,0 +1,103 @@
+version: "3.9"
+
+# ---------------------------------------------------------------------------
+# DataDog Clone — docker-compose.yml
+# Full service graph defined here; individual services are built from their
+# own subdirectories. Env vars are loaded from .env (see .env.example).
+# ---------------------------------------------------------------------------
+
+services:
+
+  # ── Infrastructure ────────────────────────────────────────────────────────
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+    ports:
+      - "2181:2181"
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on: [zookeeper]
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+    ports:
+      - "9092:9092"
+
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+
+  mongo:
+    image: mongo:7.0
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-root}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:-secret}
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  # ── Application Services ──────────────────────────────────────────────────
+
+  ingestion-service:
+    build: ./ingestion-service
+    env_file: .env
+    depends_on: [kafka]
+    ports:
+      - "8080:8080"
+
+  counter-worker:
+    build: ./workers/counter-worker
+    env_file: .env
+    depends_on: [kafka, redis]
+
+  anomaly-worker:
+    build: ./workers/anomaly-worker
+    env_file: .env
+    depends_on: [kafka, redis]
+
+  mongo-writer:
+    build: ./workers/mongo-writer
+    env_file: .env
+    depends_on: [kafka, mongo]
+
+  rollup-worker:
+    build: ./workers/rollup-worker
+    env_file: .env
+    depends_on: [kafka, redis, mongo]
+
+  websocket-gateway:
+    build: ./websocket-gateway
+    env_file: .env
+    depends_on: [redis]
+    ports:
+      - "8081:8081"
+
+  query-api:
+    build: ./query-api
+    env_file: .env
+    depends_on: [mongo, redis]
+    ports:
+      - "8082:8082"
+
+  dashboard:
+    build: ./dashboard
+    env_file: .env
+    depends_on: [query-api, websocket-gateway]
+    ports:
+      - "3000:3000"
+
+  load-generator:
+    build: ./load-generator
+    env_file: .env
+    depends_on: [ingestion-service]
+    profiles: ["loadtest"]   # only starts when --profile loadtest is passed
+
+volumes:
+  mongo_data:
