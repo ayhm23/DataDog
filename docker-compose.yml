@@ -1,103 +1,62 @@
-version: "3.9"
-
 # ---------------------------------------------------------------------------
 # DataDog Clone — docker-compose.yml
-# Full service graph defined here; individual services are built from their
-# own subdirectories. Env vars are loaded from .env (see .env.example).
+# Phase 1: infra only. App services will be added as code is written.
 # ---------------------------------------------------------------------------
 
 services:
 
-  # ── Infrastructure ────────────────────────────────────────────────────────
-
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.6.1
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-    ports:
-      - "2181:2181"
-
-  kafka:
-    image: confluentinc/cp-kafka:7.6.1
-    depends_on: [zookeeper]
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-    ports:
-      - "9092:9092"
-
+  # ── Redis ─────────────────────────────────────────────────────────────────
   redis:
-    image: redis:7.2-alpine
+    image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
+  # ── RedisInsight (visual Redis debugger) ──────────────────────────────────
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    ports:
+      - "8001:8001"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── MongoDB ───────────────────────────────────────────────────────────────
   mongo:
-    image: mongo:7.0
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-root}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASS:-secret}
+    image: mongo:7
     ports:
       - "27017:27017"
+    environment:
+      MONGO_INITDB_DATABASE: tracing
     volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  # ── Application Services ──────────────────────────────────────────────────
-
-  ingestion-service:
-    build: ./ingestion-service
-    env_file: .env
-    depends_on: [kafka]
+  # ── PostgreSQL ────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
     ports:
-      - "8080:8080"
-
-  counter-worker:
-    build: ./workers/counter-worker
-    env_file: .env
-    depends_on: [kafka, redis]
-
-  anomaly-worker:
-    build: ./workers/anomaly-worker
-    env_file: .env
-    depends_on: [kafka, redis]
-
-  mongo-writer:
-    build: ./workers/mongo-writer
-    env_file: .env
-    depends_on: [kafka, mongo]
-
-  rollup-worker:
-    build: ./workers/rollup-worker
-    env_file: .env
-    depends_on: [kafka, redis, mongo]
-
-  websocket-gateway:
-    build: ./websocket-gateway
-    env_file: .env
-    depends_on: [redis]
-    ports:
-      - "8081:8081"
-
-  query-api:
-    build: ./query-api
-    env_file: .env
-    depends_on: [mongo, redis]
-    ports:
-      - "8082:8082"
-
-  dashboard:
-    build: ./dashboard
-    env_file: .env
-    depends_on: [query-api, websocket-gateway]
-    ports:
-      - "3000:3000"
-
-  load-generator:
-    build: ./load-generator
-    env_file: .env
-    depends_on: [ingestion-service]
-    profiles: ["loadtest"]   # only starts when --profile loadtest is passed
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: tracing
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d tracing"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
 volumes:
   mongo_data:
+  postgres_data:
