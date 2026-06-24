@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "span.json",
+  "title": "Span",
+  "description": "A single distributed-trace span emitted by an instrumented service.",
+  "type": "object",
+  "required": ["traceId", "spanId", "service", "resource", "start", "duration"],
+  "properties": {
+    "traceId": {
+      "type": "string",
+      "description": "128-bit trace identifier (hex, 32 chars)"
+    },
+    "spanId": {
+      "type": "string",
+      "description": "64-bit span identifier (hex, 16 chars)"
+    },
+    "parentSpanId": {
+      "type": "string",
+      "description": "Parent span ID; omitted for root spans"
+    },
+    "service": {
+      "type": "string",
+      "description": "Name of the service that emitted this span (e.g. 'checkout-api')"
+    },
+    "resource": {
+      "type": "string",
+      "description": "Resource or endpoint name (e.g. 'GET /cart', 'redis.get')"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["web", "db", "cache", "queue", "custom"],
+      "default": "custom"
+    },
+    "start": {
+      "type": "integer",
+      "description": "Unix epoch nanoseconds when the span started"
+    },
+    "duration": {
+      "type": "integer",
+      "description": "Span duration in nanoseconds"
+    },
+    "error": {
+      "type": "integer",
+      "enum": [0, 1],
+      "default": 0,
+      "description": "1 if the span contains an error, 0 otherwise"
+    },
+    "meta": {
+      "type": "object",
+      "description": "Arbitrary string key-value tags",
+      "additionalProperties": { "type": "string" }
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Arbitrary numeric key-value metrics",
+      "additionalProperties": { "type": "number" }
+    }
+  }
+}
