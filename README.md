@@ -131,16 +131,6 @@ load-generator/      → Python
 contracts/           → Canonical span + WS message schemas
 ```
 
-## Roadmap
-
-- [x] Phase 0 — Repo skeleton + docker-compose + contracts
-- [ ] Phase 1 — Ingestion service (FastAPI → Redis Stream)
-- [ ] Phase 2 — Counter worker + anomaly worker (Redis sorted sets, pub/sub)
-- [ ] Phase 3 — Mongo writer + trace reconstruction API
-- [ ] Phase 4 — Rollup worker + PostgreSQL schema
-- [ ] Phase 5 — WebSocket gateway
-- [ ] Phase 6 — React dashboard (waterfall, live charts, alert feed)
-- [ ] Phase 7 — Load generator benchmarks + perf writeup
 
 ## License
 
