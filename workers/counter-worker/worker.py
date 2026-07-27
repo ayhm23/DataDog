@@ -67,21 +67,29 @@ async def _update_snapshot(r: aredis.Redis, service: str, resource: str, bucket:
     count = int(await r.get(f"{prefix}:count:{bucket}") or 0)
     errors = int(await r.get(f"{prefix}:errors:{bucket}") or 0)
 
-    p95_ns = 0
+    async def _percentile_ns(percentile: float, total: int) -> int:
+        idx = min(math.floor(percentile * total), total - 1)
+        result = await r.zrange(f"{prefix}:dur:{bucket}", idx, idx, withscores=True)
+        return int(result[0][1]) if result else 0
+
+    p50_ns = p95_ns = p99_ns = 0
     total = await r.zcard(f"{prefix}:dur:{bucket}")
     if total > 0:
-        idx = min(math.floor(0.95 * total), total - 1)
-        result = await r.zrange(f"{prefix}:dur:{bucket}", idx, idx, withscores=True)
-        if result:
-            p95_ns = int(result[0][1])
+        p50_ns = await _percentile_ns(0.50, total)
+        p95_ns = await _percentile_ns(0.95, total)
+        p99_ns = await _percentile_ns(0.99, total)
 
     snap = {
         "service": service,
         "resource": resource,
         "rps": str(round(count / 60.0, 4)),
         "error_rate": str(round(errors / count, 6) if count > 0 else 0.0),
+        "p50_ns": str(p50_ns),
+        "p50_ms": str(round(p50_ns / 1_000_000, 2)),
         "p95_ns": str(p95_ns),
         "p95_ms": str(round(p95_ns / 1_000_000, 2)),
+        "p99_ns": str(p99_ns),
+        "p99_ms": str(round(p99_ns / 1_000_000, 2)),
         "count": str(count),
         "error_count": str(errors),
         "updated_at": str(int(time.time() * 1000)),

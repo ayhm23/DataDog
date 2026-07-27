@@ -72,7 +72,7 @@ async def get_span(span_id: str):
 async def list_services():
     """Return distinct service names that have active snapshots in Redis."""
     r = await get_redis()
-    keys = await r.keys("snapshot:*")
+    keys = [key async for key in r.scan_iter(match="snapshot:*")]
     services = sorted({k.split(":")[1] for k in keys if len(k.split(":")) >= 2})
     return {"services": services}
 
@@ -97,7 +97,8 @@ async def get_service_spans(
         .limit(limit)
     )
     spans = await cursor.to_list(length=limit)
-    return {"service": service, "total": len(spans), "spans": spans}
+    total = await db["spans"].count_documents(query)
+    return {"service": service, "total": total, "spans": spans}
 
 
 @app.get("/metrics/live")
@@ -105,10 +106,9 @@ async def live_metrics(service: Optional[str] = None):
     """Return current snapshots from Redis for all (or one) service."""
     r = await get_redis()
     pattern = f"snapshot:{service}:*" if service else "snapshot:*"
-    keys = await r.keys(pattern)
 
     snapshots = []
-    for key in keys:
+    async for key in r.scan_iter(match=pattern):
         snap = await r.hgetall(key)
         if snap:
             snapshots.append({

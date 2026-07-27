@@ -57,8 +57,7 @@ async def _poll_snapshots():
         if not _clients:
             continue
         try:
-            keys = await r.keys("snapshot:*")
-            for key in keys:
+            async for key in r.scan_iter(match="snapshot:*"):
                 snap = await r.hgetall(key)
                 if not snap:
                     continue
@@ -70,7 +69,9 @@ async def _poll_snapshots():
                     "metrics": {
                         "requestCount":  int(snap.get("count", 0)),
                         "errorCount":    int(snap.get("error_count", 0)),
+                        "p50LatencyMs":  float(snap.get("p50_ms", 0)),
                         "p95LatencyMs":  float(snap.get("p95_ms", 0)),
+                        "p99LatencyMs":  float(snap.get("p99_ms", 0)),
                         "throughputRps": float(snap.get("rps", 0)),
                     },
                 })
