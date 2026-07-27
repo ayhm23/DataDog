@@ -53,7 +53,7 @@ Ingestion API (FastAPI) ──► Redis Streams (spans:raw)
 | `anomaly-worker` | — | Consumer group on `spans:raw`; threshold checks; publishes to Redis pub/sub `alerts` |
 | `mongo-writer` | — | Consumer group on `spans:raw`; persists raw spans to MongoDB |
 | `rollup-worker` | — | Cron job; reads MongoDB, computes hourly rollups, writes to PostgreSQL |
-| `websocket-gateway` | 8001 | Subscribes to Redis pub/sub + polls counters; fans out to dashboard clients |
+| `websocket-gateway` | 8080\* | Subscribes to Redis pub/sub + polls counters; fans out to dashboard clients |
 | `query-api` | 8002 | REST API for trace lookup and historical queries |
 | `dashboard` | 3000 | React + Vite real-time monitoring UI |
 | `load-generator` | — | Synthetic traffic tool; emits realistic multi-service traces |
@@ -64,19 +64,24 @@ Ingestion API (FastAPI) ──► Redis Streams (spans:raw)
 |---|---|---|
 | Redis 7 | 6379 | Streams (queue), sorted sets (metrics), pub/sub (alerts) |
 | MongoDB 7 | 27017 | Raw span storage (cold path) |
-| PostgreSQL 16 | 5433 | Hourly rollups, service dependency map (warm path) |
+| PostgreSQL 16 | 5432 | Hourly rollups, service dependency map (warm path) |
 | RedisInsight | 8001 | Redis visual debugger |
+
+\* If port 8080 is already taken on your machine, set `WS_HOST_PORT=8090`
+(or any free port) in a root `.env` file before running `docker compose up` —
+the compose file falls back to `${WS_HOST_PORT:-8080}` for websocket-gateway's
+host port mapping. Update `dashboard/.env`'s `VITE_WS_URL` to match if you do.
 
 ## Quick Start
 
 ```bash
-# 1. Start infrastructure
+# 1. Start infrastructure + all application services
 docker compose up -d
 
 # 2. Verify all healthy
 docker compose ps
 
-# 3. Run load generator (once ingestion service is up)
+# 3. Run load generator (once ingestion-service is up)
 cd load-generator
 pip install -r requirements.txt
 python generator.py --rps 5 --chaos
@@ -88,29 +93,59 @@ Every service emits spans in this shape:
 
 ```json
 {
-  "traceId":      "abc123xyz",
-  "spanId":       "span-001",
+  "traceId":      "4bf92f3577b34da6a3ce929d0e0e4736",
+  "spanId":       "00f067aa0ba902b7",
   "parentSpanId": null,
   "service":      "orders",
-  "operation":    "checkout",
-  "startTime":    1718700000000,
-  "duration_ms":  8000,
-  "status":       "ok",
-  "tags": {
+  "resource":     "POST /checkout",
+  "type":         "web",
+  "start":        1718700000000000000,
+  "duration":     8000000000,
+  "error":        0,
+  "meta": {
     "http.method": "POST"
+  },
+  "metrics": {
+    "http.status_code": 200
   }
 }
 ```
 
-`startTime` is Unix milliseconds. `parentSpanId` is `null` for root spans.
+`start` and `duration` are Unix epoch nanoseconds. `parentSpanId` is omitted for root spans.
 `spanId`/`parentSpanId` together define the trace tree — required for waterfall rendering.
+See [`contracts/span.json`](contracts/span.json) for the full schema.
 
 ## WebSocket Message Contract
 
 ```json
-{ "type": "metrics_update", "service": "payments", "rps": 12, "errorRate": 0.03, "p95_ms": 340 }
-{ "type": "alert", "service": "payments", "message": "Error rate crossed 5%", "timestamp": 1718700000000 }
+{
+  "type": "metric_update",
+  "timestamp": 1718700000000,
+  "service": "payments",
+  "resource": "POST /checkout",
+  "metrics": {
+    "requestCount": 120,
+    "errorCount": 4,
+    "p50LatencyMs": 85,
+    "p95LatencyMs": 340,
+    "p99LatencyMs": 610,
+    "throughputRps": 12
+  }
+}
+{
+  "type": "anomaly_alert",
+  "timestamp": 1718700000000,
+  "service": "payments",
+  "resource": "POST /checkout",
+  "severity": "high",
+  "description": "Error rate crossed 5%",
+  "value": 0.07,
+  "baseline": 0.02
+}
+{ "type": "heartbeat", "timestamp": 1718700000000 }
 ```
+
+See [`contracts/ws_messages.json`](contracts/ws_messages.json) for the full schema.
 
 ## Development
 

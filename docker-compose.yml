@@ -32,3 +32,90 @@ services:
   redisinsight:
     image: redislabs/redisinsight:latest
     ports: ["8001:8001"]
+
+  ingestion-service:
+    build: ./ingestion-service
+    ports: ["8000:8000"]
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  counter-worker:
+    build: ./workers/counter-worker
+    environment:
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  anomaly-worker:
+    build: ./workers/anomaly-worker
+    environment:
+      REDIS_URL: redis://redis:6379
+      ERROR_RATE_THRESHOLD: "0.05"
+      P95_THRESHOLD_MS: "1000"
+      ALERT_COOLDOWN_S: "60"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  mongo-writer:
+    build: ./workers/mongo-writer
+    environment:
+      REDIS_URL: redis://redis:6379
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: tracing
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+
+  websocket-gateway:
+    build: ./websocket-gateway
+    ports: ["${WS_HOST_PORT:-8080}:8080"]
+    environment:
+      REDIS_URL: redis://redis:6379
+      POLL_INTERVAL_S: "2"
+      HEARTBEAT_S: "30"
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  dashboard:
+    build: ./dashboard
+    ports: ["3000:80"]
+    depends_on:
+      - websocket-gateway
+      - query-api
+
+  rollup-worker:
+    build: ./workers/rollup-worker
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: tracing
+      PG_DSN: postgresql://admin:admin@postgres:5432/tracing
+      ROLLUP_INTERVAL_S: "3600"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  query-api:
+    build: ./query-api
+    ports: ["8002:8002"]
+    environment:
+      MONGO_URL: mongodb://mongo:27017
+      MONGO_DB: tracing
+      REDIS_URL: redis://redis:6379
+      PG_DSN: postgresql://admin:admin@postgres:5432/tracing
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy

@@ -1,32 +1,40 @@
-# React + TypeScript + Vite
+# Dashboard
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + Vite real-time monitoring UI for the DataDog clone. Connects to
+`websocket-gateway` for live metrics/alerts and to `query-api` for historical
+trace lookup.
 
-Currently, two official plugins are available:
+## Development
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Runs on `http://localhost:3000` (see `vite.config.ts`).
+
+## Environment
+
+Configured via `.env` (see `.env` in this directory, or `.env.example` at the
+repo root):
+
+| Variable | Purpose |
+|---|---|
+| `VITE_WS_URL` | WebSocket URL for `websocket-gateway` (e.g. `ws://localhost:8080/ws`) — consumed in [`src/hooks/useWebSocket.ts`](src/hooks/useWebSocket.ts) for live `metric_update` / `anomaly_alert` / `heartbeat` messages |
+| `VITE_QUERY_URL` | REST base URL for `query-api` (e.g. `http://localhost:8002`) — consumed in [`src/components/TraceWaterfall.tsx`](src/components/TraceWaterfall.tsx) for trace lookups |
+
+## Build
+
+```bash
+npm run build
+npm run preview
+```
+
+## Docker
+
+```bash
+docker build -t dashboard .
+```
+
+Served on port 80 in the container (mapped to `3000` in the root
+`docker-compose.yml`).
